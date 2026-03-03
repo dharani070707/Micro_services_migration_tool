@@ -14,6 +14,7 @@ import java.util.Optional;
 public class ControllerAnalyzer {
 
     public static Optional<ControllerInfo> analyze(Path javaFile) {
+
         try {
             CompilationUnit cu = StaticJavaParser.parse(javaFile);
 
@@ -31,18 +32,24 @@ public class ControllerAnalyzer {
                 if (!isController) continue;
 
                 ControllerInfo info = new ControllerInfo();
+
                 info.controllerName = clazz.getNameAsString();
+
                 info.packageName = cu.getPackageDeclaration()
                         .map(p -> p.getNameAsString())
                         .orElse("default");
 
-                // ✅ Field injection
+                // 🔥 VERY IMPORTANT FIX
+                // Store absolute file path for generation phase
+                info.filePath = javaFile.toAbsolutePath().toString();
+
+                // Field injection dependencies
                 for (FieldDeclaration field : clazz.getFields()) {
                     field.getVariables().forEach(v ->
                             info.dependencies.add(v.getType().asString()));
                 }
 
-                // ✅ Constructor injection
+                // Constructor injection dependencies
                 for (ConstructorDeclaration constructor : clazz.getConstructors()) {
                     for (Parameter param : constructor.getParameters()) {
                         info.dependencies.add(param.getType().asString());
@@ -51,9 +58,11 @@ public class ControllerAnalyzer {
 
                 return Optional.of(info);
             }
+
         } catch (Exception e) {
-            System.err.println("Failed to parse: " + javaFile.getFileName());
+            System.err.println("Failed to parse: " + javaFile);
         }
+
         return Optional.empty();
     }
 }

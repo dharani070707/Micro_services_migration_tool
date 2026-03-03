@@ -10,7 +10,7 @@ public class Microservice {
     public Set<String> entities = new HashSet<>();
 
     // Constructor
-    public Microservice() {
+    public Microservice(String name) {
         this.name = name;
     }
 

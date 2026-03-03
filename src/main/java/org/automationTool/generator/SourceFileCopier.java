@@ -6,7 +6,9 @@ import java.util.Collection;
 
 public class SourceFileCopier {
 
-    public void copyFiles(Collection<String> filePaths, Path destination) throws IOException {
+    public void copyFiles(Collection<String> filePaths,
+                          Path destination,
+                          String newBasePackage) throws IOException {
 
         for (String filePath : filePaths) {
 
@@ -17,9 +19,17 @@ public class SourceFileCopier {
                 continue;
             }
 
+            String content = Files.readString(source);
+
+            // 🔥 Replace old package
+            content = content.replaceAll(
+                    "package .*?;",
+                    "package " + newBasePackage + ";"
+            );
+
             Path target = destination.resolve(source.getFileName());
 
-            Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+            Files.writeString(target, content);
 
             System.out.println("Copied: " + source.getFileName());
         }

@@ -8,31 +8,44 @@ import java.util.*;
 public class BoundaryInferer {
 
     public static List<Microservice> infer(Collection<ControllerInfo> controllers) {
+
         List<Microservice> services = new ArrayList<>();
 
         for (ControllerInfo controller : controllers) {
+
             boolean assigned = false;
 
             for (Microservice service : services) {
-                Set<String> intersection = new HashSet<>(service.entities);
+
+                // Check entity overlap
+                Set<String> intersection = new HashSet<>(service.getEntities());
                 intersection.retainAll(controller.entities);
 
                 if (!intersection.isEmpty()) {
-                    service.controllers.add(controller.controllerName);
-                    service.entities.addAll(controller.entities);
+
+                    // 🔥 STORE FILE PATH INSTEAD OF NAME
+                    service.addController(controller.filePath);
+                    service.getEntities().addAll(controller.entities);
+
                     assigned = true;
                     break;
                 }
             }
 
             if (!assigned) {
-                Microservice service = new Microservice();
-                service.name = controller.controllerName + "Service";
-                service.controllers.add(controller.controllerName);
-                service.entities.addAll(controller.entities);
+
+                // 🔥 Use constructor
+                Microservice service =
+                        new Microservice(controller.controllerName + "Service");
+
+                // 🔥 STORE FILE PATH
+                service.addController(controller.filePath);
+                service.getEntities().addAll(controller.entities);
+
                 services.add(service);
             }
         }
+
         return services;
     }
 }

@@ -29,28 +29,27 @@ public class MicroServiceGenerator {
         SourceFileCopier fileCopier = new SourceFileCopier();
         MainClassGenerator mainClassGenerator = new MainClassGenerator();
 
+        // 1️⃣ Create root folder FIRST
         Path root = structureCreator.createStructure(service.getName());
 
+        // 2️⃣ Then resolve paths
+        Path javaPath = root.resolve("src/main/java");
+        Path resourcePath = root.resolve("src/main/resources");
+
+        // 3️⃣ Generate pom
         pomGenerator.generatePom(root, service.getName());
 
-        configGenerator.generateApplicationYml(
-                root.resolve("src/main/resources"),
-                port
-        );
+        // 4️⃣ Generate application.yml
+        configGenerator.generateApplicationYml(resourcePath, port);
 
-        fileCopier.copyFiles(
-                service.getControllers(),
-                root.resolve("src/main/java")
-        );
+        // 5️⃣ Define new base package
+        String basePackage = "org.generated." + service.getName().toLowerCase();
 
-        fileCopier.copyFiles(
-                service.getEntities(),
-                root.resolve("src/main/java")
-        );
+        // 6️⃣ Copy files with package rewrite
+        fileCopier.copyFiles(service.getControllers(), javaPath, basePackage);
+        fileCopier.copyFiles(service.getEntities(), javaPath, basePackage);
 
-        mainClassGenerator.generateMainClass(
-                root.resolve("src/main/java"),
-                service.getName()
-        );
+        // 7️⃣ Generate main class
+        mainClassGenerator.generateMainClass(javaPath, service.getName());
     }
 }
