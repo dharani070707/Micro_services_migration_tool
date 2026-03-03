@@ -13,6 +13,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.automationTool.generator.MicroServiceGenerator;
+
 public class Main {
 
     public static void main(String[] args) throws Exception {
@@ -56,5 +58,8 @@ public class Main {
 
         // 7️⃣ Print final result
         microservices.forEach(System.out::println);
+
+        MicroServiceGenerator generator = new MicroServiceGenerator();
+        generator.generate(microservices);
     }
 }
