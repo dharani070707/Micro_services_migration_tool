@@ -20,8 +20,6 @@ public class SourceFileCopier {
             }
 
             String content = Files.readString(source);
-
-            // 🔥 Replace old package
             content = content.replaceAll(
                     "package .*?;",
                     "package " + newBasePackage + ";"
@@ -30,8 +28,6 @@ public class SourceFileCopier {
             Path target = destination.resolve(source.getFileName());
 
             Files.writeString(target, content);
-
-            System.out.println("Copied: " + source.getFileName());
         }
     }
 }

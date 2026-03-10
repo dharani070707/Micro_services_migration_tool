@@ -1,9 +1,14 @@
 package org.automationTool.generator;
 
 import org.automationTool.model.Microservice;
+import org.automationTool.boundary.DependencyResolver;
+import org.automationTool.analyzer.ComponentDetector;
+import org.automationTool.util.ClassIndex;
+import java.nio.file.Path;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Collections;
+import java.util.*;
 
 public class MicroServiceGenerator {
 
@@ -29,6 +34,13 @@ public class MicroServiceGenerator {
         SourceFileCopier fileCopier = new SourceFileCopier();
         MainClassGenerator mainClassGenerator = new MainClassGenerator();
 
+        // 🆕 Build ClassIndex for lookup
+        ClassIndex classIndex = new ClassIndex(
+                org.automationTool.util.JavaFileScanner.scanJavaFiles(
+                        org.automationTool.util.Config.MONOLITH_ROOT
+                )
+        );
+
         // 1️⃣ Create root folder FIRST
         Path root = structureCreator.createStructure(service.getName());
 
@@ -45,11 +57,50 @@ public class MicroServiceGenerator {
         // 5️⃣ Define new base package
         String basePackage = "org.generated." + service.getName().toLowerCase();
 
-        // 6️⃣ Copy files with package rewrite
-        fileCopier.copyFiles(service.getControllers(), javaPath, basePackage);
-        fileCopier.copyFiles(service.getEntities(), javaPath, basePackage);
+        // 🧠 6️⃣ Compute dependency closure
+        Set<String> seedClasses = new HashSet<>();
 
-        // 7️⃣ Generate main class
+        service.getControllers().forEach(pathStr -> {
+            Path path = Path.of(pathStr);
+            String name = path.getFileName().toString().replace(".java", "");
+            seedClasses.add(name);
+        });
+
+        service.getEntities().forEach(pathStr -> {
+            Path path = Path.of(pathStr);
+            String name = path.getFileName().toString().replace(".java", "");
+            seedClasses.add(name);
+        });
+
+        Set<String> allRequired =
+                DependencyResolver.resolveClosure(
+                        seedClasses,
+                        ComponentDetector.getClassMap()
+                );
+
+        System.out.println("Including classes: " + allRequired);
+
+        Set<String> copied = new HashSet<>();
+
+        for (String cls : allRequired) {
+            Path srcFile = classIndex.getClassFile(cls);
+            if (srcFile != null) {
+
+                String pathStr = srcFile.toString();
+
+                if (!copied.contains(pathStr)) {
+                    copied.add(pathStr);
+
+                    fileCopier.copyFiles(
+                            Collections.singletonList(pathStr),
+                            javaPath,
+                            basePackage
+                    );
+
+                    System.out.println("Copied: " + srcFile.getFileName());
+                }
+            }
+        }
         mainClassGenerator.generateMainClass(javaPath, service.getName());
     }
 }

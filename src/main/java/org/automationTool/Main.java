@@ -22,6 +22,18 @@ public class Main {
 
         // 1️⃣ Scan monolith source files
         var javaFiles = JavaFileScanner.scanJavaFiles(Config.MONOLITH_ROOT);
+        System.out.println("Analyzing class dependencies...\n");
+        for (Path file : javaFiles) {
+            ComponentDetector.analyzeDependencies(file);
+        }
+        ComponentDetector.cleanDependencies();
+        ComponentDetector.getClassMap().values().forEach(ci -> {
+            System.out.println("Class: " + ci.getClassName());
+            ci.getDependencies().forEach(dep ->
+                    System.out.println("   -> " + dep));
+        });
+
+
         System.out.println("Scanning for Controllers...\n");
 
         // 2️⃣ Build Entity Name → Path map
