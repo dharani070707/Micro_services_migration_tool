@@ -54,6 +54,9 @@ public class MicroServiceGenerator {
         // 4️⃣ Generate application.yml
         configGenerator.generateApplicationYml(resourcePath, port);
 
+        // 4.5️⃣ Copy templates and static resources
+        copyResources(resourcePath);
+
         // 5️⃣ Define new base package
         String basePackage = "org.generated." + service.getName().toLowerCase();
 
@@ -102,5 +105,50 @@ public class MicroServiceGenerator {
             }
         }
         mainClassGenerator.generateMainClass(javaPath, service.getName());
+    }
+
+    private void copyResources(Path targetResourcePath) throws IOException {
+
+        Path sourceResources = org.automationTool.util.Config.MONOLITH_ROOT
+                .resolve("src/main/resources");
+
+        if (!java.nio.file.Files.exists(sourceResources)) {
+            return;
+        }
+
+        copyFolder(sourceResources, targetResourcePath);
+
+        System.out.println("Copied all resource files");
+    }
+
+    private void copyFolder(Path source, Path target) throws IOException {
+
+        java.nio.file.Files.walk(source).forEach(path -> {
+            try {
+
+                String name = path.getFileName().toString();
+
+                // Skip all Spring config files
+                if (name.startsWith("application") ||
+                        name.startsWith("bootstrap")) {
+                    return;
+                }
+
+                Path destination = target.resolve(source.relativize(path));
+
+                if (java.nio.file.Files.isDirectory(path)) {
+                    java.nio.file.Files.createDirectories(destination);
+                } else {
+                    java.nio.file.Files.copy(
+                            path,
+                            destination,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                    );
+                }
+
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 }
