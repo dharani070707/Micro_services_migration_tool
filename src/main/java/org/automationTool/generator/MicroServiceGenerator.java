@@ -33,34 +33,29 @@ public class MicroServiceGenerator {
         ConfigGenerator configGenerator = new ConfigGenerator();
         SourceFileCopier fileCopier = new SourceFileCopier();
         MainClassGenerator mainClassGenerator = new MainClassGenerator();
-
-        // 🆕 Build ClassIndex for lookup
         ClassIndex classIndex = new ClassIndex(
                 org.automationTool.util.JavaFileScanner.scanJavaFiles(
                         org.automationTool.util.Config.MONOLITH_ROOT
                 )
         );
 
-        // 1️⃣ Create root folder FIRST
+        //  root folder FIRST
         Path root = structureCreator.createStructure(service.getName());
 
-        // 2️⃣ Then resolve paths
+        //  resolve paths
         Path javaPath = root.resolve("src/main/java");
         Path resourcePath = root.resolve("src/main/resources");
 
-        // 3️⃣ Generate pom
+        // Generate pom
         pomGenerator.generatePom(root, service.getName());
 
-        // 4️⃣ Generate application.yml
+        // Generate application.yml
         configGenerator.generateApplicationYml(resourcePath, port);
 
-        // 4.5️⃣ Copy templates and static resources
-        copyResources(resourcePath);
-
-        // 5️⃣ Define new base package
+        // Define new base package
         String basePackage = "org.generated." + service.getName().toLowerCase();
 
-        // 🧠 6️⃣ Compute dependency closure
+        // Compute dependency closure
         Set<String> seedClasses = new HashSet<>();
 
         service.getControllers().forEach(pathStr -> {

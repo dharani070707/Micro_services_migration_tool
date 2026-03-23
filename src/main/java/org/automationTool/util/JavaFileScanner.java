@@ -11,6 +11,9 @@ public class JavaFileScanner {
         return Files.walk(root)
                 .filter(p -> p.toString().endsWith(".java"))
                 .filter(p -> !p.toString().contains("/src/test/"))
+                .filter(p -> !p.toString().contains("/templates/"))
+                .filter(p -> !p.toString().contains("/static/"))
+                .filter(p -> !p.toString().contains("/resources/"))
                 .collect(Collectors.toList());
     }
 }

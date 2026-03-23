@@ -20,13 +20,18 @@ public class SourceFileCopier {
             }
 
             String content = Files.readString(source);
-            content = content.replaceAll(
-                    "package .*?;",
-                    "package " + newBasePackage + ";"
-            );
+
+            // Fix package for Java files
+            if (source.toString().endsWith(".java")) {
+                content = content.replaceAll(
+                        "package .*?;",
+                        "package " + newBasePackage + ";"
+                );
+            }
 
             Path target = destination.resolve(source.getFileName());
 
+            Files.createDirectories(target.getParent());
             Files.writeString(target, content);
         }
     }

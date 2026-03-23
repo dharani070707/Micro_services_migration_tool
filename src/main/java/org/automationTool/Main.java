@@ -20,7 +20,7 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
 
-        // 1️⃣ Scan monolith source files
+        //Scan monolith source files
         var javaFiles = JavaFileScanner.scanJavaFiles(Config.MONOLITH_ROOT);
         System.out.println("Analyzing class dependencies...\n");
         for (Path file : javaFiles) {
@@ -36,14 +36,14 @@ public class Main {
 
         System.out.println("Scanning for Controllers...\n");
 
-        // 2️⃣ Build Entity Name → Path map
+        // Build Entity Name → Path map
         Map<String, String> entityNameToPath =
                 EntityScanner.scanEntities(javaFiles);
 
-        // 3️⃣ Index classes for quick lookup
+        // Index classes for quick lookup
         ClassIndex classIndex = new ClassIndex(javaFiles);
 
-        // 4️⃣ Collect ALL controller information
+        // Collect ALL controller information
         List<ControllerInfo> controllerInfos = new ArrayList<>();
 
         for (Path file : javaFiles) {
@@ -71,13 +71,13 @@ public class Main {
             });
         }
 
-        // 5️⃣ Infer microservice boundaries
+        // Infer microservice boundaries
         System.out.println("\nInferred Microservices:\n");
         var microservices = BoundaryInferer.infer(controllerInfos);
 
         microservices.forEach(System.out::println);
 
-        // 6️⃣ Generate services
+        // Generate services
         MicroServiceGenerator generator = new MicroServiceGenerator();
         generator.generate(microservices);
     }

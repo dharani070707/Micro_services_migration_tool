@@ -21,16 +21,17 @@ public class ControllerAnalyzer {
             for (ClassOrInterfaceDeclaration clazz :
                     cu.findAll(ClassOrInterfaceDeclaration.class)) {
 
+                //Accept BOTH Controller & RestController
                 boolean isController = clazz.getAnnotations()
                         .stream()
                         .anyMatch(a -> {
                             String name = a.getNameAsString();
-                            return name.equals("Controller")
-                                    || name.equals("RestController");
+                            return name.equals("Controller") || name.equals("RestController");
                         });
 
                 if (!isController) continue;
 
+                //Create info AFTER filtering
                 ControllerInfo info = new ControllerInfo();
 
                 info.controllerName = clazz.getNameAsString();
@@ -39,9 +40,10 @@ public class ControllerAnalyzer {
                         .map(p -> p.getNameAsString())
                         .orElse("default");
 
-                // 🔥 VERY IMPORTANT FIX
-                // Store absolute file path for generation phase
                 info.filePath = javaFile.toAbsolutePath().toString();
+
+                // Treat everything as backend controller
+                info.setRestController(true);
 
                 // Field injection dependencies
                 for (FieldDeclaration field : clazz.getFields()) {

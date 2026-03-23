@@ -59,8 +59,6 @@ public class ComponentDetector {
                     .orElse("");
 
             ClassInfo classInfo = new ClassInfo(className, packageName, javaFile);
-
-            // 🔥 Call dependency extractor
             DependencyExtractor.extractDependencies(cu, classInfo);
 
             classMap.put(className, classInfo);

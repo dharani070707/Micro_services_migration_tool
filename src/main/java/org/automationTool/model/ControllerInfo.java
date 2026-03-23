@@ -23,4 +23,14 @@ public class ControllerInfo {
                 " -> Entities: " + entities +
                 " -> FilePath: " + filePath;
     }
+
+    private boolean isRestController;
+
+    public boolean isRestController() {
+        return isRestController;
+    }
+
+    public void setRestController(boolean restController) {
+        isRestController = restController;
+    }
 }

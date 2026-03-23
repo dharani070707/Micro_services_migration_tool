@@ -22,8 +22,6 @@ public class BoundaryInferer {
                 intersection.retainAll(controller.entities);
 
                 if (!intersection.isEmpty()) {
-
-                    // 🔥 STORE FILE PATH INSTEAD OF NAME
                     service.addController(controller.filePath);
                     service.getEntities().addAll(controller.entities);
 
@@ -34,11 +32,9 @@ public class BoundaryInferer {
 
             if (!assigned) {
 
-                // 🔥 Use constructor
                 Microservice service =
                         new Microservice(controller.controllerName + "Service");
 
-                // 🔥 STORE FILE PATH
                 service.addController(controller.filePath);
                 service.getEntities().addAll(controller.entities);
 

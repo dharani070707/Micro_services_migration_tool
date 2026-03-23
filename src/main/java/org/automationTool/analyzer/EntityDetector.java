@@ -33,8 +33,6 @@ public class EntityDetector {
                         if (!args.isEmpty()) {
 
                             String entityName = args.get(0).asString();
-
-                            // 🔥 Convert entity name → file path
                             String entityPath = entityNameToPath.get(entityName);
 
                             if (entityPath != null) {
