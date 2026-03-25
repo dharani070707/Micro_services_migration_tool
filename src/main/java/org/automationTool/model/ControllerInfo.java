@@ -1,6 +1,8 @@
 package org.automationTool.model;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class ControllerInfo {
@@ -33,4 +35,9 @@ public class ControllerInfo {
     public void setRestController(boolean restController) {
         isRestController = restController;
     }
+    public List<MethodInfo> methods = new ArrayList<>();
+    public void addMethod(String name, String returnType, String params) {
+        methods.add(new MethodInfo(name, returnType, params));
+    }
+
 }

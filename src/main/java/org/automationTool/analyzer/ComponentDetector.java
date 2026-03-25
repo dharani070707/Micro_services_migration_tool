@@ -1,15 +1,17 @@
 package org.automationTool.analyzer;
+
 import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import org.automationTool.model.ClassInfo;
-import java.util.*;
 
+import java.util.*;
 import java.nio.file.Path;
 
-
 public class ComponentDetector {
+
     private static final Map<String, ClassInfo> classMap = new HashMap<>();
+
     public static boolean isSpringComponent(Path javaFile) {
         try {
             CompilationUnit cu = StaticJavaParser.parse(javaFile);
@@ -49,6 +51,7 @@ public class ComponentDetector {
         }
         return false;
     }
+
     public static void analyzeDependencies(Path javaFile) {
         try {
             CompilationUnit cu = StaticJavaParser.parse(javaFile);
@@ -58,8 +61,32 @@ public class ComponentDetector {
                     .map(pd -> pd.getNameAsString())
                     .orElse("");
 
-            ClassInfo classInfo = new ClassInfo(className, packageName, javaFile);
+            // FIX: do not overwrite existing ClassInfo
+            ClassInfo classInfo = classMap.getOrDefault(
+                    className,
+                    new ClassInfo(className, packageName, javaFile)
+            );
+
+            // Run existing dependency extractor
             DependencyExtractor.extractDependencies(cu, classInfo);
+
+            // FIX: ensure inheritance is captured (critical)
+            for (ClassOrInterfaceDeclaration clazz :
+                    cu.findAll(ClassOrInterfaceDeclaration.class)) {
+
+                if (!clazz.getExtendedTypes().isEmpty()) {
+                    String parent = clazz.getExtendedTypes().get(0).getNameAsString();
+                    classInfo.setParentClass(parent);
+                    classInfo.addDependency(parent);
+                }
+
+                // FIX: interfaces
+                clazz.getImplementedTypes().forEach(i -> {
+                    String iface = i.getNameAsString();
+                    classInfo.addInterface(iface);
+                    classInfo.addDependency(iface);
+                });
+            }
 
             classMap.put(className, classInfo);
 
@@ -71,6 +98,7 @@ public class ComponentDetector {
     public static Map<String, ClassInfo> getClassMap() {
         return classMap;
     }
+
     public static void cleanDependencies() {
         Set<String> projectClasses = classMap.keySet();
 
