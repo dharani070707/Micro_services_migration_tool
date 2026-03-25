@@ -15,15 +15,21 @@ public class ConfigGenerator {
                 spring:
                   datasource:
                     url: jdbc:h2:mem:testdb
-                    driverClassName: org.h2.Driver
+                    driver-class-name: org.h2.Driver
                     username: sa
                     password:
+
                   jpa:
-                    database-platform: org.hibernate.dialect.H2Dialect
                     hibernate:
                       ddl-auto: update
+                    show-sql: true
+
+                  h2:
+                    console:
+                      enabled: true
                 """.formatted(port);
 
+        Files.createDirectories(resourcePath);
         Files.writeString(resourcePath.resolve("application.yml"), content);
     }
 }

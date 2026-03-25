@@ -134,7 +134,7 @@ public class MicroServiceGenerator {
         }
 
         mainClassGenerator.generateMainClass(javaPath, service.getName());
-        copyResources(resourcePath);
+        //copyResources(resourcePath);
     }
 
     private String fixControllerContent(String content, String newPackage) {

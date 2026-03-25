@@ -21,13 +21,19 @@ public class SourceFileCopier {
                 continue;
             }
 
+            String fileName = source.getFileName().toString();
+
+            // FINAL FIX: skip ANY repository file by name
+            if (fileName.endsWith("Repository.java")) {
+                continue;
+            }
+            if (source.getFileName().toString().equals("application.properties")) {
+                continue;
+            }
+
             String content = Files.readString(source);
 
             if (source.toString().endsWith(".java")) {
-                // skip original repositories
-                if (content.contains("@Repository") || content.contains("extends JpaRepository")) {
-                    continue;
-                }
 
                 // fix package
                 content = content.replaceFirst(
@@ -43,49 +49,40 @@ public class SourceFileCopier {
 
                     content = content.replace("@Controller", "@RestController");
 
-                    // replace repository with service
                     content = content.replaceAll("\\b(\\w+)Repository\\b", "$1Service");
                     content = content.replaceAll("\\brepository\\b", "service");
 
-                    // remove repository imports
                     content = content.replaceAll("import\\s+.*Repository;", "");
 
-                    // remove Controller import
                     content = content.replaceAll(
                             "import\\s+org\\.springframework\\.stereotype\\.Controller;",
                             ""
                     );
 
-                    // add required imports
                     content = addImport(content, basePackage + ".service.*");
                     content = addImport(content, basePackage + ".model.*");
                     content = addImport(content, "org.springframework.web.bind.annotation.RestController");
 
-                    // remove MVC imports
                     content = content.replaceAll(
                             "import\\s+org\\.springframework\\.ui\\.[^;]+;",
                             ""
                     );
 
-                    // remove Model import specifically
                     content = content.replaceAll(
                             "import\\s+org\\.springframework\\.ui\\.Model;",
                             ""
                     );
 
-                    // remove methods using Model (robust)
                     content = content.replaceAll(
                             "(?s)(public|private)\\s+String\\s+\\w+\\([^)]*Model[^)]*\\)\\s*\\{(?:[^{}]*|\\{[^{}]*\\})*\\}",
                             ""
                     );
 
-                    // fallback removal if anything remains
                     content = content.replaceAll(
                             "(?s)\\w+\\s+\\w+\\([^)]*Model[^)]*\\)\\s*\\{.*?\\}",
                             ""
                     );
 
-                    // remove view returns
                     content = content.replaceAll(
                             "return\\s+\"[^\"]*\";",
                             ""
@@ -96,16 +93,15 @@ public class SourceFileCopier {
                             "return \"\";"
                     );
 
-                    // remove invalid import
                     content = content.replaceAll(
                             "import\\s+org\\.springframework\\.ui\\.;",
                             ""
                     );
 
+                    // prevent Model compile error
                     content = content.replaceAll("\\bModel\\b", "Object");
                 }
 
-                // add common imports
                 if (content.contains("@GetMapping"))
                     content = addImport(content, "org.springframework.web.bind.annotation.GetMapping");
 
@@ -129,7 +125,7 @@ public class SourceFileCopier {
                 );
                 content = content.replaceAll("@NotBlank", "");
 
-                // ensure entity annotation
+                // ensure entity
                 if (targetPackage.contains(".model")
                         && content.contains("class")
                         && !content.contains("@Entity")) {
@@ -142,7 +138,6 @@ public class SourceFileCopier {
                     content = addImport(content, "jakarta.persistence.Entity");
                 }
 
-                // ensure file ends correctly
                 if (!content.trim().endsWith("}")) {
                     content = content + "\n}";
                 }
