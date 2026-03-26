@@ -9,6 +9,7 @@ import org.automationTool.util.Config;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import java.util.regex.*;
 
 public class MicroServiceGenerator {
 
@@ -35,9 +36,7 @@ public class MicroServiceGenerator {
         ServiceGenerator serviceGen = new ServiceGenerator();
 
         ClassIndex classIndex = new ClassIndex(
-                org.automationTool.util.JavaFileScanner.scanJavaFiles(
-                        org.automationTool.util.Config.MONOLITH_ROOT
-                )
+                org.automationTool.util.JavaFileScanner.scanJavaFiles(Config.MONOLITH_ROOT)
         );
 
         Path root = structureCreator.createStructure(service.getName());
@@ -48,12 +47,7 @@ public class MicroServiceGenerator {
         pomGenerator.generatePom(root, service.getName());
         configGenerator.generateApplicationYml(resourcePath, port);
 
-        Path targetH2 = resourcePath.resolve("db/h2");
-
-        fileCopier.copyResourceDirectory(
-                Config.MONOLITH_DB_H2,
-                targetH2
-        );
+        fileCopier.copyResourceDirectory(Config.MONOLITH_DB_H2, resourcePath.resolve("db/h2"));
 
         String basePackage = "org.generated." + service.getName().toLowerCase();
 
@@ -71,23 +65,33 @@ public class MicroServiceGenerator {
 
         Set<String> seedClasses = new HashSet<>();
 
-        service.getControllers().forEach(pathStr -> {
-            String name = Path.of(pathStr).getFileName().toString().replace(".java", "");
-            seedClasses.add(name);
-        });
+        service.getControllers().forEach(pathStr ->
+                seedClasses.add(Path.of(pathStr).getFileName().toString().replace(".java", ""))
+        );
 
-        service.getEntities().forEach(pathStr -> {
-            String name = Path.of(pathStr).getFileName().toString().replace(".java", "");
-            seedClasses.add(name);
-        });
+        service.getEntities().forEach(pathStr ->
+                seedClasses.add(Path.of(pathStr).getFileName().toString().replace(".java", ""))
+        );
 
         Set<String> allRequired =
-                DependencyResolver.resolveClosure(
-                        seedClasses,
-                        ComponentDetector.getClassMap()
-                );
+                DependencyResolver.resolveClosure(seedClasses, ComponentDetector.getClassMap());
 
         allRequired.addAll(seedClasses);
+
+        Map<String, Path> repoFiles = new HashMap<>();
+
+        for (String cls : allRequired) {
+
+            Path srcFile = classIndex.getClassFile(cls);
+            if (srcFile == null) continue;
+
+            String fileName = srcFile.getFileName().toString();
+
+            if (fileName.endsWith("Repository.java")) {
+                String entityName = fileName.replace("Repository.java", "");
+                repoFiles.put(entityName, srcFile);
+            }
+        }
 
         Set<String> copiedClasses = new HashSet<>();
         Set<String> entityClasses = new HashSet<>();
@@ -97,11 +101,38 @@ public class MicroServiceGenerator {
             Path srcFile = classIndex.getClassFile(cls);
             if (srcFile == null) continue;
 
-            String pathStr = srcFile.toString();
-            String className = srcFile.getFileName().toString();
+            String content = Files.readString(srcFile);
 
-            if (copiedClasses.contains(className)) continue;
-            copiedClasses.add(className);
+            if (content.contains("@Entity") ||
+                    service.getEntities().stream().anyMatch(p -> p.contains(cls))) {
+                entityClasses.add(cls);
+            }
+        }
+
+        // -------- GENERATE REPO + SERVICE --------
+        for (String entity : entityClasses) {
+
+            List<String> dynamicMethods = new ArrayList<>();
+
+            if (repoFiles.containsKey(entity)) {
+                String repoContent = Files.readString(repoFiles.get(entity));
+                dynamicMethods = extractRepositoryMethods(repoContent);
+            }
+
+            repoGen.generateRepository(repoPath, basePackage, entity, dynamicMethods);
+            serviceGen.generateService(servicePath, basePackage, entity, dynamicMethods);
+        }
+
+        // -------- COPY & TRANSFORM FILES --------
+        for (String cls : allRequired) {
+
+            Path srcFile = classIndex.getClassFile(cls);
+            if (srcFile == null) continue;
+
+            String fileName = srcFile.getFileName().toString();
+
+            if (copiedClasses.contains(fileName)) continue;
+            copiedClasses.add(fileName);
 
             String content = Files.readString(srcFile);
 
@@ -114,79 +145,83 @@ public class MicroServiceGenerator {
                 targetPackage = basePackage + ".controller";
                 content = fixControllerContent(content, targetPackage);
 
-            } else if (cls.endsWith("Repository")) {
+            } else if (fileName.endsWith("Repository.java")) {
                 continue;
+
             } else if (content.contains("@Service")) {
                 targetDir = servicePath;
                 targetPackage = basePackage + ".service";
+                content = fixPackage(content, targetPackage);
 
             } else {
                 targetDir = modelPath;
                 targetPackage = basePackage + ".model";
-
-                if (content.contains("@Entity") ||
-                        service.getEntities().stream().anyMatch(p -> p.contains(cls))) {
-                    entityClasses.add(cls);
-                }
+                content = fixPackage(content, targetPackage);
             }
 
-            fileCopier.copyFiles(
-                    Collections.singletonList(pathStr),
-                    targetDir,
-                    targetPackage
+            // ✅ safer import replacement
+            content = content.replaceAll(
+                    "org\\.springframework\\.samples\\.petclinic\\.\\w+",
+                    basePackage + ".model"
             );
-        }
 
-        for (String entity : entityClasses) {
-            repoGen.generateRepository(repoPath, basePackage, entity);
-            serviceGen.generateService(servicePath, basePackage, entity);
+            Path targetFile = targetDir.resolve(srcFile.getFileName());
+            Files.writeString(targetFile, content);
         }
 
         mainClassGenerator.generateMainClass(javaPath, service.getName());
-
     }
 
+    // -------- METHOD EXTRACTION --------
+    private List<String> extractRepositoryMethods(String content) {
+
+        List<String> methods = new ArrayList<>();
+
+        Pattern pattern = Pattern.compile(
+                "(List<.*?>|Page<.*?>|Optional<.*?>|\\w+)\\s+(\\w+)\\s*\\((.*?)\\);"
+        );
+
+        Matcher matcher = pattern.matcher(content);
+
+        while (matcher.find()) {
+
+            String returnType = matcher.group(1);
+            String methodName = matcher.group(2);
+            String params = matcher.group(3);
+
+            if (methodName.matches("save|findAll|findById|deleteById|existsById|count")
+                    || (!methodName.startsWith("findBy") && !methodName.startsWith("readBy"))) {
+                continue;
+            }
+
+            String fullMethod = returnType + " " + methodName + "(" + params + ")";
+            methods.add(fullMethod);
+        }
+
+        return methods;
+    }
+
+    // -------- CONTROLLER FIX --------
     private String fixControllerContent(String content, String newPackage) {
 
         String basePackage = newPackage.substring(0, newPackage.lastIndexOf("."));
 
-        content = content.replaceAll(
-                "package\\s+.*?;",
-                "package " + newPackage + ";"
-        );
+        content = content.replaceAll("package\\s+.*?;", "package " + newPackage + ";");
 
         content = content.replace("@Controller", "@RestController");
 
-        content = content.replaceAll("ResponseEntity\\s*<\\s*>", "ResponseEntity<?>");
-
-        // Replace repository → service (class usage)
         content = content.replaceAll("\\b(\\w+)Repository\\b", "$1Service");
-
-        // Fix variable names (vetRepository → vetService)
         content = content.replaceAll("repository", "service");
 
-        // Fix constructor injection
-        content = content.replaceAll(
-                "(private\\s+final\\s+\\w+Service\\s+\\w+;)",
-                "$1"
-        );
+        // ✅ generic fix for invalid find methods
+        content = content.replaceAll("\\.find(?!By)[A-Z]\\w*\\s*\\(", ".findAll(");
 
-        // Remove old repository imports
-        content = content.replaceAll(
-                "import\\s+.*Repository;",
-                ""
-        );
+        content = content.replaceAll("import\\s+.*Repository;", "");
 
-        // Add correct service import
         content = addImport(content, basePackage + ".service.*");
-
-        // Add model imports (Vet, Vets, etc.)
         content = addImport(content, basePackage + ".model.*");
-
-        // Add RestController import
         content = addImport(content, "org.springframework.web.bind.annotation.RestController");
 
-        // Fix trailing commas
         content = content.replaceAll(",\\s*\\)", ")");
 
         return content;
@@ -197,15 +232,13 @@ public class MicroServiceGenerator {
         if (content.contains("import " + importStmt)) return content;
 
         if (content.contains("import ")) {
-            return content.replaceFirst(
-                    "(import .*?;)",
-                    "$1\nimport " + importStmt + ";"
-            );
+            return content.replaceFirst("(import .*?;)", "$1\nimport " + importStmt + ";");
         } else {
-            return content.replaceFirst(
-                    "(package .*?;)",
-                    "$1\nimport " + importStmt + ";"
-            );
+            return content.replaceFirst("(package .*?;)", "$1\nimport " + importStmt + ";");
         }
+    }
+
+    private String fixPackage(String content, String newPackage) {
+        return content.replaceAll("package\\s+.*?;", "package " + newPackage + ";");
     }
 }

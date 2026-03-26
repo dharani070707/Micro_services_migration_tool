@@ -75,6 +75,11 @@ public class SourceFileCopier {
                 if (content.contains("@MappedSuperclass")) {
                     content = addImport(content, "jakarta.persistence.MappedSuperclass");
                 }
+
+                // Fix validation Pattern annotation
+                if (content.contains("@Pattern")) {
+                    content = addImport(content, "jakarta.validation.constraints.Pattern");
+                }
                 // ================= CONTROLLER FIX =================
                 if (finalPackage.contains(".controller")) {
 
@@ -108,6 +113,12 @@ public class SourceFileCopier {
                     content = content.replaceAll(",?\\s*Model\\s+\\w+", "");
                     content = content.replaceAll("\\(\\s*Model\\s+\\w+\\s*\\)", "()");
 
+                    // REMOVE ModelMap
+                    content = content.replaceAll(",?\\s*ModelMap\\s+\\w+", "");
+                    content = content.replaceAll("\\(\\s*ModelMap\\s+\\w+\\s*\\)", "()");
+
+                    // REMOVE ModelMap usage
+                    content = content.replaceAll("modelMap\\.[^;]*;", "");
                     // Remove ONLY model.addAttribute safely
                     content = content.replaceAll("model\\.addAttribute\\([^;]*\\);", "");
 
@@ -153,11 +164,6 @@ public class SourceFileCopier {
                 );
                 content = content.replaceAll("@Xml[^\\n]*", "");
 
-                // ---------------- CLEAN VALIDATION ----------------
-                content = content.replaceAll(
-                        "import\\s+jakarta\\.validation\\.constraints\\.[^;]+;",
-                        ""
-                );
                 content = content.replaceAll("@NotBlank", "");
 
                 // ---------------- ENTITY FIX ----------------
