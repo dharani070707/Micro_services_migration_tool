@@ -4,6 +4,7 @@ import org.automationTool.model.Microservice;
 import org.automationTool.boundary.DependencyResolver;
 import org.automationTool.analyzer.ComponentDetector;
 import org.automationTool.util.ClassIndex;
+import org.automationTool.util.Config;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -47,6 +48,13 @@ public class MicroServiceGenerator {
         pomGenerator.generatePom(root, service.getName());
         configGenerator.generateApplicationYml(resourcePath, port);
 
+        Path targetH2 = resourcePath.resolve("db/h2");
+
+        fileCopier.copyResourceDirectory(
+                Config.MONOLITH_DB_H2,
+                targetH2
+        );
+
         String basePackage = "org.generated." + service.getName().toLowerCase();
 
         Path basePackagePath = javaPath.resolve(basePackage.replace(".", "/"));
@@ -81,7 +89,7 @@ public class MicroServiceGenerator {
 
         allRequired.addAll(seedClasses);
 
-        Set<String> copied = new HashSet<>();
+        Set<String> copiedClasses = new HashSet<>();
         Set<String> entityClasses = new HashSet<>();
 
         for (String cls : allRequired) {
@@ -90,8 +98,10 @@ public class MicroServiceGenerator {
             if (srcFile == null) continue;
 
             String pathStr = srcFile.toString();
-            if (copied.contains(pathStr)) continue;
-            copied.add(pathStr);
+            String className = srcFile.getFileName().toString();
+
+            if (copiedClasses.contains(className)) continue;
+            copiedClasses.add(className);
 
             String content = Files.readString(srcFile);
 
@@ -104,9 +114,8 @@ public class MicroServiceGenerator {
                 targetPackage = basePackage + ".controller";
                 content = fixControllerContent(content, targetPackage);
 
-            } else if (content.contains("@Repository")) {
+            } else if (cls.endsWith("Repository")) {
                 continue;
-
             } else if (content.contains("@Service")) {
                 targetDir = servicePath;
                 targetPackage = basePackage + ".service";
@@ -134,7 +143,7 @@ public class MicroServiceGenerator {
         }
 
         mainClassGenerator.generateMainClass(javaPath, service.getName());
-        //copyResources(resourcePath);
+
     }
 
     private String fixControllerContent(String content, String newPackage) {
@@ -198,28 +207,5 @@ public class MicroServiceGenerator {
                     "$1\nimport " + importStmt + ";"
             );
         }
-    }
-
-    private void copyResources(Path targetResourcePath) throws IOException {
-
-        Path sourceResources = org.automationTool.util.Config.MONOLITH_ROOT
-                .resolve("src/main/resources");
-
-        if (!Files.exists(sourceResources)) return;
-
-        Files.walk(sourceResources).forEach(path -> {
-            try {
-                Path dest = targetResourcePath.resolve(sourceResources.relativize(path));
-
-                if (Files.isDirectory(path)) {
-                    Files.createDirectories(dest);
-                } else {
-                    Files.copy(path, dest, StandardCopyOption.REPLACE_EXISTING);
-                }
-
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
     }
 }
