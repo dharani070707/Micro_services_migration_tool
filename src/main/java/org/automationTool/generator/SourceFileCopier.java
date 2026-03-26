@@ -27,7 +27,6 @@ public class SourceFileCopier {
 
             String fileName = source.getFileName().toString();
 
-            // prevent duplicate copies
             if (copiedClasses.contains(fileName)) continue;
             copiedClasses.add(fileName);
 
@@ -35,14 +34,13 @@ public class SourceFileCopier {
 
             String content = Files.readString(source);
 
-            String finalPackage = "";
+            String finalPackage;
 
             if (fileName.endsWith(".java")) {
 
-                // skip original repositories
                 if (fileName.endsWith("Repository.java")) continue;
 
-                // ---------------- DETERMINE PACKAGE ----------------
+                // -------- PACKAGE --------
                 if (fileName.endsWith("Controller.java")) {
                     finalPackage = basePackage + ".controller";
                 } else if (fileName.endsWith("Service.java") || fileName.endsWith("ServiceImpl.java")) {
@@ -51,39 +49,34 @@ public class SourceFileCopier {
                     finalPackage = basePackage + ".model";
                 }
 
-                // ---------------- PACKAGE FIX ----------------
                 content = content.replaceFirst(
                         "package\\s+[^;]+;",
                         "package " + finalPackage + ";"
                 );
 
-                // ---------------- IMPORT FIX ----------------
                 content = fixImports(content, basePackage);
 
-                if (content.contains("@Table")) {
+                // -------- ENTITY FIX --------
+                if (content.contains("@Table"))
                     content = addImport(content, "jakarta.persistence.Table");
-                }
 
-                if (content.contains("@EmbeddedId")) {
+                if (content.contains("@EmbeddedId"))
                     content = addImport(content, "jakarta.persistence.EmbeddedId");
-                }
 
-                if (content.contains("@Embeddable")) {
+                if (content.contains("@Embeddable"))
                     content = addImport(content, "jakarta.persistence.Embeddable");
-                }
 
-                if (content.contains("@MappedSuperclass")) {
+                if (content.contains("@MappedSuperclass"))
                     content = addImport(content, "jakarta.persistence.MappedSuperclass");
-                }
 
-                // Fix validation Pattern annotation
-                if (content.contains("@Pattern")) {
+                if (content.contains("@Pattern"))
                     content = addImport(content, "jakarta.validation.constraints.Pattern");
-                }
-                // ================= CONTROLLER FIX =================
+
+                // ================= SAFE CONTROLLER FIX =================
                 if (finalPackage.contains(".controller")) {
 
-                    // Controller → RestController
+                    // ONLY SAFE TRANSFORMATIONS
+
                     content = content.replace("@Controller", "@RestController");
 
                     content = content.replaceAll(
@@ -93,55 +86,26 @@ public class SourceFileCopier {
 
                     content = addImport(content, "org.springframework.web.bind.annotation.RestController");
 
-                    // Repository → Service
+                    // Replace repository → service (SAFE ONLY)
                     content = content.replaceAll("\\b(\\w+)Repository\\b", "$1Service");
-                    content = content.replaceAll("\\brepository\\b", "service");
 
+                    // Remove repository imports
                     content = content.replaceAll("import\\s+.*Repository;", "");
 
-                    // Add imports
+                    // Add required imports
                     content = addImport(content, basePackage + ".service.*");
                     content = addImport(content, basePackage + ".model.*");
 
-                    // Remove UI imports
+                    // Remove UI imports ONLY
                     content = content.replaceAll(
                             "import\\s+org\\.springframework\\.ui\\.[^;]+;",
                             ""
                     );
 
-                    // Remove Model parameter
-                    content = content.replaceAll(",?\\s*Model\\s+\\w+", "");
-                    content = content.replaceAll("\\(\\s*Model\\s+\\w+\\s*\\)", "()");
-
-                    // REMOVE ModelMap
-                    content = content.replaceAll(",?\\s*ModelMap\\s+\\w+", "");
-                    content = content.replaceAll("\\(\\s*ModelMap\\s+\\w+\\s*\\)", "()");
-
-                    // REMOVE ModelMap usage
-                    content = content.replaceAll("modelMap\\.[^;]*;", "");
-                    // Remove ONLY model.addAttribute safely
-                    content = content.replaceAll("model\\.addAttribute\\([^;]*\\);", "");
-
-                    // Replace full pagination return safely
-                    content = content.replaceAll(
-                            "return\\s+addPaginationModel\\([^;]*\\);",
-                            "return \"OK\";"
-                    );
-
-                    // Replace string returns
-                    content = content.replaceAll(
-                            "return\\s+\"[^\"]*\";",
-                            "return \"Microservice - API Response\";"
-                    );
-
-                    // Fix trailing commas
-                    content = content.replaceAll(",\\s*\\)", ")");
-
-                    // Fix empty return
-                    content = content.replaceAll("return\\s*;", "return \"OK\";");
+                    // ❌ DO NOT MODIFY METHOD BODIES
                 }
 
-                // ---------------- ANNOTATIONS ----------------
+                // -------- ANNOTATIONS --------
                 if (content.contains("@GetMapping"))
                     content = addImport(content, "org.springframework.web.bind.annotation.GetMapping");
 
@@ -157,16 +121,16 @@ public class SourceFileCopier {
                 if (content.contains("@Autowired"))
                     content = addImport(content, "org.springframework.beans.factory.annotation.Autowired");
 
-                // ---------------- CLEAN JAXB ----------------
+                // -------- CLEAN JAXB --------
                 content = content.replaceAll(
                         "import\\s+jakarta\\.xml\\.bind\\.annotation\\.[^;]+;",
                         ""
                 );
-                content = content.replaceAll("@Xml[^\\n]*", "");
 
+                content = content.replaceAll("@Xml[^\\n]*", "");
                 content = content.replaceAll("@NotBlank", "");
 
-                // ---------------- ENTITY FIX ----------------
+                // -------- AUTO ENTITY --------
                 if (finalPackage.contains(".model")
                         && content.contains("class")
                         && !content.contains("@Entity")
@@ -189,12 +153,7 @@ public class SourceFileCopier {
                 }
             }
 
-            // ---------------- WRITE FILE ----------------
             Path target = destination.resolve(fileName);
-
-            if (target.toString().contains("src/main/java/src/main/java")) {
-                throw new RuntimeException("Invalid nested path: " + target);
-            }
 
             Files.createDirectories(target.getParent());
             Files.writeString(target, content);
@@ -204,7 +163,6 @@ public class SourceFileCopier {
     }
 
     private void validate(String content, String fileName) {
-
         long open = content.chars().filter(c -> c == '{').count();
         long close = content.chars().filter(c -> c == '}').count();
 
@@ -238,24 +196,15 @@ public class SourceFileCopier {
         if (content.contains("import " + importStmt + ";")) return content;
 
         if (content.contains("import ")) {
-            return content.replaceFirst(
-                    "(import .*?;)",
-                    "$1\nimport " + importStmt + ";"
-            );
+            return content.replaceFirst("(import .*?;)", "$1\nimport " + importStmt + ";");
         } else {
-            return content.replaceFirst(
-                    "(package .*?;)",
-                    "$1\nimport " + importStmt + ";"
-            );
+            return content.replaceFirst("(package .*?;)", "$1\nimport " + importStmt + ";");
         }
     }
 
     public void copyResourceDirectory(Path sourceDir, Path targetDir) throws IOException {
 
-        if (!Files.exists(sourceDir)) {
-            System.out.println("Resource directory not found: " + sourceDir);
-            return;
-        }
+        if (!Files.exists(sourceDir)) return;
 
         Files.walk(sourceDir).forEach(sourcePath -> {
             try {
@@ -265,12 +214,9 @@ public class SourceFileCopier {
                     Files.createDirectories(targetPath);
                 } else {
                     Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                    System.out.println("Copied resource: " + sourcePath.getFileName());
                 }
 
-            } catch (IOException e) {
-                System.err.println("Failed to copy resource: " + sourcePath);
-            }
+            } catch (IOException ignored) {}
         });
     }
 }

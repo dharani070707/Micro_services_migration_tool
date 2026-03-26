@@ -9,14 +9,12 @@ import org.automationTool.util.Config;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
-import java.util.regex.*;
 
 public class MicroServiceGenerator {
 
     private int basePort = 8081;
 
     public void generate(List<Microservice> services) throws IOException {
-
         int port = basePort;
 
         for (Microservice service : services) {
@@ -34,6 +32,7 @@ public class MicroServiceGenerator {
         MainClassGenerator mainClassGenerator = new MainClassGenerator();
         RepositoryGenerator repoGen = new RepositoryGenerator();
         ServiceGenerator serviceGen = new ServiceGenerator();
+        ControllerGenerator controllerGen = new ControllerGenerator();
 
         ClassIndex classIndex = new ClassIndex(
                 org.automationTool.util.JavaFileScanner.scanJavaFiles(Config.MONOLITH_ROOT)
@@ -63,6 +62,7 @@ public class MicroServiceGenerator {
         Files.createDirectories(servicePath);
         Files.createDirectories(repoPath);
 
+        // -------- SEED CLASSES --------
         Set<String> seedClasses = new HashSet<>();
 
         service.getControllers().forEach(pathStr ->
@@ -78,26 +78,18 @@ public class MicroServiceGenerator {
 
         allRequired.addAll(seedClasses);
 
-        Map<String, Path> repoFiles = new HashMap<>();
+        // -------- CONTROLLERS LIST --------
+        Set<String> controllerClasses = new HashSet<>();
 
-        for (String cls : allRequired) {
+        service.getControllers().forEach(pathStr -> {
+            String cls = Path.of(pathStr).getFileName().toString().replace(".java", "");
+            controllerClasses.add(cls);
+        });
 
-            Path srcFile = classIndex.getClassFile(cls);
-            if (srcFile == null) continue;
-
-            String fileName = srcFile.getFileName().toString();
-
-            if (fileName.endsWith("Repository.java")) {
-                String entityName = fileName.replace("Repository.java", "");
-                repoFiles.put(entityName, srcFile);
-            }
-        }
-
-        Set<String> copiedClasses = new HashSet<>();
+        // -------- ENTITY DETECTION --------
         Set<String> entityClasses = new HashSet<>();
 
         for (String cls : allRequired) {
-
             Path srcFile = classIndex.getClassFile(cls);
             if (srcFile == null) continue;
 
@@ -109,7 +101,21 @@ public class MicroServiceGenerator {
             }
         }
 
-        // -------- GENERATE REPO + SERVICE --------
+        // -------- GENERATE SERVICE + REPOSITORY --------
+        Map<String, Path> repoFiles = new HashMap<>();
+
+        for (String cls : allRequired) {
+            Path srcFile = classIndex.getClassFile(cls);
+            if (srcFile == null) continue;
+
+            String fileName = srcFile.getFileName().toString();
+
+            if (fileName.endsWith("Repository.java")) {
+                String entityName = fileName.replace("Repository.java", "");
+                repoFiles.put(entityName, srcFile);
+            }
+        }
+
         for (String entity : entityClasses) {
 
             List<String> dynamicMethods = new ArrayList<>();
@@ -123,52 +129,47 @@ public class MicroServiceGenerator {
             serviceGen.generateService(servicePath, basePackage, entity, dynamicMethods);
         }
 
-        // -------- COPY & TRANSFORM FILES --------
+        // -------- COPY MODELS & SERVICES ONLY --------
+        Map<Path, List<String>> groupedFiles = new HashMap<>();
+        groupedFiles.put(servicePath, new ArrayList<>());
+        groupedFiles.put(modelPath, new ArrayList<>());
+
         for (String cls : allRequired) {
 
             Path srcFile = classIndex.getClassFile(cls);
             if (srcFile == null) continue;
 
+            String content = Files.readString(srcFile);
             String fileName = srcFile.getFileName().toString();
 
-            if (copiedClasses.contains(fileName)) continue;
-            copiedClasses.add(fileName);
+            if (fileName.endsWith("Repository.java")) continue;
 
-            String content = Files.readString(srcFile);
-
-            Path targetDir;
-            String targetPackage;
-
-            if (content.contains("@RestController") || content.contains("@Controller")) {
-
-                targetDir = controllerPath;
-                targetPackage = basePackage + ".controller";
-                content = fixControllerContent(content, targetPackage);
-
-            } else if (fileName.endsWith("Repository.java")) {
-                continue;
-
-            } else if (content.contains("@Service")) {
-                targetDir = servicePath;
-                targetPackage = basePackage + ".service";
-                content = fixPackage(content, targetPackage);
-
-            } else {
-                targetDir = modelPath;
-                targetPackage = basePackage + ".model";
-                content = fixPackage(content, targetPackage);
+            if (content.contains("@Service")) {
+                groupedFiles.get(servicePath).add(srcFile.toString());
+            } else if (!fileName.endsWith("Controller.java")) {
+                groupedFiles.get(modelPath).add(srcFile.toString());
             }
-
-            // ✅ safer import replacement
-            content = content.replaceAll(
-                    "org\\.springframework\\.samples\\.petclinic\\.\\w+",
-                    basePackage + ".model"
-            );
-
-            Path targetFile = targetDir.resolve(srcFile.getFileName());
-            Files.writeString(targetFile, content);
         }
 
+        fileCopier.copyFiles(groupedFiles.get(servicePath), servicePath, basePackage + ".service");
+        fileCopier.copyFiles(groupedFiles.get(modelPath), modelPath, basePackage + ".model");
+
+        // -------- GENERATE ENTITY CONTROLLERS --------
+        for (String entity : entityClasses) {
+            controllerGen.generateController(controllerPath, basePackage, entity);
+        }
+
+        // -------- GENERATE NON-ENTITY CONTROLLERS --------
+        for (String controller : controllerClasses) {
+
+            String entityName = controller.replace("Controller", "");
+
+            if (!entityClasses.contains(entityName)) {
+                controllerGen.generateBasicController(controllerPath, basePackage, controller);
+            }
+        }
+
+        // -------- MAIN CLASS --------
         mainClassGenerator.generateMainClass(javaPath, service.getName());
     }
 
@@ -177,68 +178,24 @@ public class MicroServiceGenerator {
 
         List<String> methods = new ArrayList<>();
 
-        Pattern pattern = Pattern.compile(
-                "(List<.*?>|Page<.*?>|Optional<.*?>|\\w+)\\s+(\\w+)\\s*\\((.*?)\\);"
+        var pattern = java.util.regex.Pattern.compile(
+                "(List<.*?>|Optional<.*?>|\\w+)\\s+(\\w+)\\s*\\((.*?)\\);"
         );
 
-        Matcher matcher = pattern.matcher(content);
+        var matcher = pattern.matcher(content);
 
         while (matcher.find()) {
 
-            String returnType = matcher.group(1);
             String methodName = matcher.group(2);
-            String params = matcher.group(3);
 
             if (methodName.matches("save|findAll|findById|deleteById|existsById|count")
                     || (!methodName.startsWith("findBy") && !methodName.startsWith("readBy"))) {
                 continue;
             }
 
-            String fullMethod = returnType + " " + methodName + "(" + params + ")";
-            methods.add(fullMethod);
+            methods.add(matcher.group());
         }
 
         return methods;
-    }
-
-    // -------- CONTROLLER FIX --------
-    private String fixControllerContent(String content, String newPackage) {
-
-        String basePackage = newPackage.substring(0, newPackage.lastIndexOf("."));
-
-        content = content.replaceAll("package\\s+.*?;", "package " + newPackage + ";");
-
-        content = content.replace("@Controller", "@RestController");
-
-        content = content.replaceAll("\\b(\\w+)Repository\\b", "$1Service");
-        content = content.replaceAll("repository", "service");
-
-        // ✅ generic fix for invalid find methods
-        content = content.replaceAll("\\.find(?!By)[A-Z]\\w*\\s*\\(", ".findAll(");
-
-        content = content.replaceAll("import\\s+.*Repository;", "");
-
-        content = addImport(content, basePackage + ".service.*");
-        content = addImport(content, basePackage + ".model.*");
-        content = addImport(content, "org.springframework.web.bind.annotation.RestController");
-
-        content = content.replaceAll(",\\s*\\)", ")");
-
-        return content;
-    }
-
-    private String addImport(String content, String importStmt) {
-
-        if (content.contains("import " + importStmt)) return content;
-
-        if (content.contains("import ")) {
-            return content.replaceFirst("(import .*?;)", "$1\nimport " + importStmt + ";");
-        } else {
-            return content.replaceFirst("(package .*?;)", "$1\nimport " + importStmt + ";");
-        }
-    }
-
-    private String fixPackage(String content, String newPackage) {
-        return content.replaceAll("package\\s+.*?;", "package " + newPackage + ";");
     }
 }
