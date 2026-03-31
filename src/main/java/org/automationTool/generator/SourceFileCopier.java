@@ -72,11 +72,10 @@ public class SourceFileCopier {
                 if (content.contains("@Pattern"))
                     content = addImport(content, "jakarta.validation.constraints.Pattern");
 
-                // ================= SAFE CONTROLLER FIX =================
+                // ================= CONTROLLER FIX =================
                 if (finalPackage.contains(".controller")) {
 
-                    // ONLY SAFE TRANSFORMATIONS
-
+                    // Convert to REST controller
                     content = content.replace("@Controller", "@RestController");
 
                     content = content.replaceAll(
@@ -86,7 +85,7 @@ public class SourceFileCopier {
 
                     content = addImport(content, "org.springframework.web.bind.annotation.RestController");
 
-                    // Replace repository → service (SAFE ONLY)
+                    // Replace repository → service
                     content = content.replaceAll("\\b(\\w+)Repository\\b", "$1Service");
 
                     // Remove repository imports
@@ -96,13 +95,20 @@ public class SourceFileCopier {
                     content = addImport(content, basePackage + ".service.*");
                     content = addImport(content, basePackage + ".model.*");
 
-                    // Remove UI imports ONLY
+                    // Remove UI imports
                     content = content.replaceAll(
                             "import\\s+org\\.springframework\\.ui\\.[^;]+;",
                             ""
                     );
 
-                    // ❌ DO NOT MODIFY METHOD BODIES
+                    // ADD RequestBody import
+                    content = addImport(content, "org.springframework.web.bind.annotation.RequestBody");
+
+                    // FIX POST METHODS (SAFE)
+                    content = content.replaceAll(
+                            "@PostMapping\\s*\\n\\s*public\\s+(\\w+)\\s+(\\w+)\\((\\w+)\\s+(\\w+)\\)",
+                            "@PostMapping\npublic $1 $2(@RequestBody $3 $4)"
+                    );
                 }
 
                 // -------- ANNOTATIONS --------
